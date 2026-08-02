@@ -4,8 +4,8 @@ import torch
 from transformers import pipeline
 
 print("Loading the model 'openai/whisper-tiny'...")
-# device = "cuda" if torch.cuda.is_available() else "cpu"
-device = "cpu"
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
 # The pipeline function simplifies the process of loading the model and processor.
 # We specify the task "automatic-speech-recognition" and the model name.
 asr_pipeline = pipeline(

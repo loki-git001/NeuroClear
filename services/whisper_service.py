@@ -2,10 +2,11 @@
 
 import os
 import time
+import torch
 from transformers import pipeline
 
 print("Loading the model 'openai/whisper-tiny'...")
-device = "cpu"
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Load the pipeline globally so it only initializes once when the app starts
 asr_pipeline = pipeline(
