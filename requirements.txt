@@ -111,6 +111,7 @@ pygments==2.20.0
 pyparsing==3.3.2
 python-dateutil==2.9.0.post0
 python-json-logger==4.1.0
+python-multipart==0.0.32
 pywinpty==3.0.5
 pyyaml==6.0.3
 pyzmq==27.1.0
