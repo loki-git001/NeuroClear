@@ -35,9 +35,7 @@ def transcribe_audio(file_path, pipe):
 
     try:
         start_time = time.perf_counter()
-        # Pass the file path directly to the pipeline.
-        # Note: The pipeline automatically handles necessary preprocessing,
-        # such as resampling the audio to 16kHz as expected by Whisper.
+        
         result = pipe(file_path)
 
         end_time = time.perf_counter()
