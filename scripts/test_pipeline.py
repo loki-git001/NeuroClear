@@ -3,6 +3,7 @@
 # End-to-end smoke test for the NeuroClear pipeline:
 #   Stage 1  →  Whisper transcription   (whisper_service)
 #   Stage 2  →  Forced alignment        (alignment_service)
+#   Stage 3  →  Audio slicing           (slicer_service)
 # ──────────────────────────────────────────────────────────────────────────────
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ if _PROJECT_ROOT not in sys.path:
 
 from services.whisper_service import transcribe_audio_file
 from services.alignment_service import align_audio_to_text
+from services.slicer_service import slice_audio_by_words
 
 # ── Configuration ────────────────────────────────────────────────────────────
 AUDIO_FILE = os.path.join(_PROJECT_ROOT, "data", "raw", "sample.wav")
@@ -66,6 +68,28 @@ def main() -> None:
 
     print()
     print(f"  Total words aligned: {len(alignments)}")
+    print("=" * 60)
+
+    # ── Stage 3: Audio Slicing ────────────────────────────────────────────
+    print("\n" + "=" * 60)
+    print("  STAGE 3 — Audio Slicer")
+    print("=" * 60)
+
+    slices = slice_audio_by_words(AUDIO_FILE, alignments)
+
+    if not slices:
+        print("\n  No slices produced.")
+        return
+
+    print()
+    for s in slices:
+        word = s["word"].ljust(max_word_len)
+        dur = f"{s['duration']:.3f}s"
+        print(f"  {s['index']:03d}  {word}  {dur}  →  {os.path.basename(s['file'])}")
+
+    print()
+    print(f"  Total clips saved: {len(slices)}")
+    print(f"  Output directory : {os.path.dirname(slices[0]['file'])}")
     print("=" * 60)
 
 
