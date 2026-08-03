@@ -17,6 +17,7 @@ dependencies = [
     "soundfile>=0.14.0",
     "torch>=2.13.0",
     "torchaudio>=2.11.0",
+    "torchcodec>=0.15.0",
     "torchvision>=0.28.0",
     "transformers>=5.14.1",
     "uvicorn>=0.52.1",
@@ -26,6 +27,7 @@ dependencies = [
 torch = { index = "pytorch-cu130" }
 torchvision = { index = "pytorch-cu130" }
 torchaudio = { index = "pytorch-cu130" }
+torchcodec = { index = "pytorch-cu130" }
 
 [[tool.uv.index]]
 name = "pytorch-cu130"
