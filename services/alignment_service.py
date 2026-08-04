@@ -85,6 +85,10 @@ def align_audio_to_text(
 
     # ── 4. Run forced alignment ─────────────────────────────────────────
     aligned_tokens, scores = _run_forced_align(log_probs, tokens, num_frames)
+    
+    if aligned_tokens is None or scores is None:
+        print("[alignment_service] WARNING: Alignment aborted due to token/frame length mismatch.")
+        return []
 
     # ── 5. Merge character alignment into word-level timestamps ─────────
     words = _merge_to_words(aligned_tokens, scores, cleaned_words, num_frames)
@@ -197,7 +201,7 @@ def _run_forced_align(
     log_probs: torch.Tensor,
     tokens: list[int],
     num_frames: int,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor | None, torch.Tensor | None]:
     """Wrap ``torchaudio.functional.forced_align`` with correct tensor shapes.
 
     Parameters
@@ -231,17 +235,20 @@ def _run_forced_align(
     input_lengths_cpu = input_lengths.cpu()
     target_lengths_cpu = target_lengths.cpu()
 
-    aligned_tokens, scores = torchaudio.functional.forced_align(
-        log_probs=log_probs_cpu,     # (1, T, C)
-        targets=targets_cpu,          # (1, L)
-        input_lengths=input_lengths_cpu,   # (1,)
-        target_lengths=target_lengths_cpu, # (1,)
-        blank=_BLANK_ID,
-    )
-    # aligned_tokens shape: (1, T)  — token label per frame
-    # scores         shape: (1, T)  — log-prob per frame
-
-    return aligned_tokens, scores
+    try:
+        aligned_tokens, scores = torchaudio.functional.forced_align(
+            log_probs=log_probs_cpu,     # (1, T, C)
+            targets=targets_cpu,          # (1, L)
+            input_lengths=input_lengths_cpu,   # (1,)
+            target_lengths=target_lengths_cpu, # (1,)
+            blank=_BLANK_ID,
+        )
+        # aligned_tokens shape: (1, T)  — token label per frame
+        # scores         shape: (1, T)  — log-prob per frame
+        return aligned_tokens, scores
+    except Exception as e:
+        print(f"[alignment_service] ERROR: Forced alignment failed. This often happens if the transcript is longer than the audio duration (e.g., Whisper hallucination). Details: {e}")
+        return None, None
 
 
 def _merge_to_words(
