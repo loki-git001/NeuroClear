@@ -75,7 +75,7 @@ def main() -> None:
     print("  STAGE 3 — Audio Slicer")
     print("=" * 60)
 
-    slices = slice_audio_by_words(AUDIO_FILE, alignments)
+    slices = slice_audio_by_words(AUDIO_FILE, alignments, sample_rate=16000)
 
     if not slices:
         print("\n  No slices produced.")
