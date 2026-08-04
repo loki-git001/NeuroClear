@@ -269,8 +269,8 @@ def _merge_to_words(
     aligned_tokens : Tensor
         ``(1, T)`` — per-frame token label.
     scores : Tensor
-        ``(1, T)`` — per-frame score (unused here but available for
-        confidence metrics in later stages).
+        ``(1, T)`` — per-frame CTC log-probability score.  Used to
+        compute a per-word ``confidence`` value.
     cleaned_words : list[str]
         Ordered list of words as they appear in the normalised transcript.
     num_frames : int
@@ -280,7 +280,7 @@ def _merge_to_words(
     -------
     list[dict]
         Word-level alignment with ``word``, ``start`` (seconds), ``end``
-        (seconds) keys.
+        (seconds), and ``confidence`` (float, CTC log-prob mean) keys.
     """
     # Duration of a single CTC output frame (seconds).
     # The Wav2Vec2 encoder downsamples by a factor of 320 at 16 kHz,
@@ -308,10 +308,23 @@ def _merge_to_words(
         if tok_id == separator_id:
             # Finalise the current word if we have accumulated frames.
             if word_start_frame is not None and word_idx < len(cleaned_words):
+                # ── CTC Confidence: extract frame scores for this word ───
+                # CRITICAL SAFEGUARD: If word_start_frame == frame_idx the
+                # slice would be empty.  In that case grab the single frame
+                # score directly instead of calling .mean() on a 0-length
+                # tensor (which would return NaN) or falling back to 0.0
+                # (which falsely implies 100 % confidence).
+                if word_start_frame == frame_idx:
+                    avg_score = scores[0, word_start_frame].item()
+                else:
+                    word_scores = scores[0, word_start_frame:frame_idx]
+                    avg_score = word_scores.mean().item()
+
                 words.append({
                     "word": cleaned_words[word_idx],
                     "start": round(word_start_frame * frame_duration, 3),
                     "end": round(frame_idx * frame_duration, 3),
+                    "confidence": round(avg_score, 3),
                 })
                 word_idx += 1
                 word_start_frame = None
@@ -331,10 +344,19 @@ def _merge_to_words(
                 last_active_frame = f
                 break
 
+        # ── CTC Confidence for the final word ────────────────────────
+        end_frame = last_active_frame + 1
+        if word_start_frame == end_frame:
+            avg_score = scores[0, word_start_frame].item()
+        else:
+            word_scores = scores[0, word_start_frame:end_frame]
+            avg_score = word_scores.mean().item()
+
         words.append({
             "word": cleaned_words[word_idx],
             "start": round(word_start_frame * frame_duration, 3),
-            "end": round((last_active_frame + 1) * frame_duration, 3),
+            "end": round(end_frame * frame_duration, 3),
+            "confidence": round(avg_score, 3),
         })
 
     return words
