@@ -5,10 +5,12 @@
 #   Stage 2  →  Forced alignment        (alignment_service)
 #   Stage 3  →  Audio slicing           (slicer_service)
 #   Stage 4  →  Clinical scoring        (scoring_service)
+#   Stage 5  →  LLM clinical report     (llm_service)
 # ──────────────────────────────────────────────────────────────────────────────
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 
@@ -26,9 +28,14 @@ from services.scoring_service import (
     detect_stutters,
     detect_false_starts,
 )
+from services.llm_service import generate_clinical_report
 
 # ── Configuration ────────────────────────────────────────────────────────────
-AUDIO_FILE = os.path.join(_PROJECT_ROOT, "data", "raw", "sample_2.wav")
+AUDIO_FILE = os.path.join(_PROJECT_ROOT, "data", "raw", "sample.wav")
+
+# The reference sentence the patient was asked to read aloud.
+# TARGET_TEXT = "This is a Python string method that left-justifies a string by padding"
+TARGET_TEXT = "This is a check volume. This is a check."
 
 
 def main() -> None:
@@ -45,10 +52,11 @@ def main() -> None:
     print("=" * 60)
 
     whisper_result = transcribe_audio_file(AUDIO_FILE)
-    transcript: str = whisper_result["text"]
+    # transcript: str = whisper_result["text"]
     # transcript: str = "This is a Python string method that left-justifies a string by padding"
+    whisper_text: str = whisper_result["text"]  
 
-    print(f"\n  Transcript : {transcript}")
+    print(f"\n  Transcript : {whisper_text}")
     print(f"  Inference  : {whisper_result['inference_time_seconds']}s")
 
     # ── Stage 2: Forced Alignment ────────────────────────────────────────
@@ -56,7 +64,7 @@ def main() -> None:
     print("  STAGE 2 — Forced Alignment (Wav2Vec2)")
     print("=" * 60)
 
-    alignments = align_audio_to_text(AUDIO_FILE, transcript)
+    alignments = align_audio_to_text(AUDIO_FILE, TARGET_TEXT)
 
     if not alignments:
         print("\n  No alignment results (empty transcript?).")
@@ -162,7 +170,6 @@ def main() -> None:
     # ── 4d. Motor Tremor / Stutter Detection ───────────────────────
     stutter_results = detect_stutters(slices)
     flagged = [s for s in stutter_results if s.get("stutter_flag")]
-
     print("\n  ┌─ Motor Tremor / Stutter Flags ──────────────────────────┐")
     if flagged:
         for s in flagged:
@@ -177,6 +184,28 @@ def main() -> None:
     else:
         print("  │  ✔  No stutter/tremor patterns detected.")
     print("  └────────────────────────────────────────────────────────┘")
+
+    print("\n" + "=" * 60)
+    print("  PIPELINE COMPLETE — Stage 1-4")
+    print("=" * 60)
+
+    # ── Stage 5: LLM Clinical Report ──────────────────────────────────
+    print("\n" + "=" * 60)
+    print("  STAGE 5 — LLM Clinical Report (Gemini)")
+    print("=" * 60)
+
+    clinical_report = generate_clinical_report(
+        target_text=TARGET_TEXT,
+        patient_text=whisper_text,
+        prosody_data=prosody,
+        articulation_data=alignments,
+        tremor_data=stutter_results,
+        false_start_data=false_starts,
+    )
+
+    print("\n" + "-" * 60)
+    print(json.dumps(clinical_report, indent=4))
+    print("-" * 60)
 
     print("\n" + "=" * 60)
     print("  PIPELINE COMPLETE")
