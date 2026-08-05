@@ -159,12 +159,16 @@ class ClinicalReport(BaseModel):
     # ── Section 5: Dysarthria Detection Gate ──────────────────────────────────────
     dysarthria_detected: bool = Field(
         description=(
-            "CRITICAL FIELD. Set to true ONLY if objective evidence of dysarthria "
-            "is present across at LEAST TWO independent signal domains "
-            "(articulation, prosody, motor tremor). A single anomalous domain "
-            "MUST result in false. When in doubt, return false. "
-            "In clinical screening, a false negative (missed case) is preferable "
-            "to a false positive (incorrectly labelling a healthy speaker as dysarthric)."
+            "CRITICAL FIELD. Set to true when objective evidence of dysarthria "
+            "is clearly present across at LEAST TWO independent signal domains "
+            "(articulation, prosody, motor tremor), OR when a SINGLE domain shows "
+            "severe, unambiguous impairment (e.g., WPM < 50, or a CTC score < -3.0 "
+            "on multiple words). "
+            "Set to false only when each flagged metric has a plausible "
+            "non-pathological explanation (e.g., recording noise, deliberate "
+            "reading pace) AND no other domain corroborates the finding. "
+            "When in doubt and signals are genuinely borderline, set to false "
+            "and use confidence_in_assessment = 'Low'."
         )
     )
     dysarthria_severity: Optional[str] = Field(
@@ -251,100 +255,118 @@ def _build_prompt(
 
     return f"""\
 <role>
-You are a conservative, evidence-based Speech-Language Pathologist (SLP) \
-conducting an objective automated screening of a speech recording. \
-Your primary clinical obligation is to AVOID FALSE POSITIVES. \
-You must NOT diagnose dysarthria unless the objective signal data \
-converges across at least two independent measurement domains. \
-When evidence is borderline or incomplete, you must conclude "no dysarthria detected."
+You are an experienced Speech-Language Pathologist (SLP) conducting an \
+objective automated dysarthria screening. Your goal is ACCURATE DETECTION — \
+you must identify dysarthria when the evidence supports it, and clear the \
+patient when it does not. Both false positives (over-diagnosis) and false \
+negatives (missed diagnoses) cause patient harm. Apply balanced, \
+evidence-based clinical judgment. Flag dysarthria when at least two independent \
+signal domains show clear, measurable impairment.
 </role>
 
 <context>
 The patient was given the following TARGET text to read aloud:
   "{target_text}"
 
-The NeuroClear AI pipeline processed the audio recording and extracted the \
-following objective metrics. These are your ONLY source of evidence.
+The NeuroClear AI pipeline extracted the following objective metrics.
+These are your ONLY source of evidence. Do not fabricate data.
 
 <data id="stage1_transcription">
 Actual patient transcript (from Whisper ASR):
   "{patient_text}"
-NOTE: Whisper ASR frequently hallucinates or silently drops disfluent phonemes.
-Do NOT interpret a transcript mismatch as proof of dysarthria unless
-articulation and motor tremor signals also show consistent impairment.
+Clinical note: Whisper may hallucinate or drop disfluent phonemes. A transcript
+mismatch alone is not diagnostic. However, if articulation scores or tremor
+events also indicate impairment, consider the mismatch as corroborating evidence.
 </data>
 
 <data id="stage2_articulation_confidence">
-Per-word CTC log-probability confidence scores from Wav2Vec2 forced alignment.
-Scale: 0.0 = perfect; more negative = worse. Clinical concern threshold: < -1.5.
-NOTE: A single isolated word with a very low score is likely a recording artefact,
-not dysarthria. A PATTERN of consistently low scores (< -1.5) across multiple
-words is required to flag articulation as clinically impaired.
+Per-word CTC log-probability scores from Wav2Vec2 forced alignment.
+Scale: 0.0 = perfect articulation; more negative = worse clarity.
+  - Score > -0.5              : Normal articulation
+  - Score -0.5 to -1.0       : Mild degradation (may be noise, accent, or speed)
+  - Score -1.0 to -2.0       : Moderate impairment — clinically notable
+  - Score below -2.0          : Severe impairment — strong indicator of dysarthria
+Interpretation guidance: An isolated single-word outlier may be a recording
+artefact. However, a PATTERN across multiple words, OR a single extremely
+low score (< -3.0), is a strong positive indicator.
 {json.dumps(articulation_data, indent=2)}
 </data>
 
 <data id="stage4_prosody_metrics">
 Speaking rate and pause analysis (false-start time already removed):
 {json.dumps(prosody_data, indent=2)}
-Healthy norms: 130-180 WPM; avg inter-word gap < 0.3s.
-NOTE: A slow rate in isolation (e.g. 60-100 WPM) may simply reflect deliberate
-reading pace, unfamiliarity with the text, or mild anxiety. Only flag prosody
-as pathological when WPM is substantially below 80 AND other domains also show
-impairment.
+Healthy norms: 130–180 WPM; avg inter-word gap < 0.3s.
+Clinical severity anchors for speaking rate:
+  - 100-130 WPM (borderline): Low concern; may be deliberate reading pace.
+  - 80-100 WPM (mild):        Clinically notable; consistent with mild dysarthria
+                              if corroborated by other domain findings.
+  - Below 80 WPM (moderate):  A strong, independent indicator of dysarthria.
+                              Even with no other signals, below 80 WPM warrants
+                              flagging as clinically significant.
+  - Below 50 WPM (severe):    Almost always pathological.
+For inter-word gaps, a max_gap > 1.0s or avg_gap > 0.5s is notable.
 </data>
 
 <data id="stage4_within_word_tremor">
-Words flagged for within-word motor tremor (DSP amplitude envelope analysis).
-The threshold is already conservative: peaks must exceed syllable_count + 1.
-NOTE: The DSP detector can still produce false positives from background noise
-or microphone handling. Only treat stutter_flag=true as clinically meaningful
-if multiple words are flagged, or if the same word is also showing low CTC confidence.
+Words flagged for within-word motor tremor. The DSP threshold is already
+conservative: peaks must exceed syllable_count + 1.
+Interpretation guidance:
+  - A single flagged word with stutter_flag=true is a weak signal.
+  - Two or more flagged words, OR one flagged word with low CTC confidence
+    on the same word, is a strong positive indicator for motor disfluency.
 {json.dumps(tremor_data, indent=2)}
 </data>
 
 <data id="stage4_false_starts">
 Inter-word gap events with unexpected vocal energy (false starts / pre-voicing tremors).
-NOTE: Only treat false_start_flag=true as clinically significant if
-active_tremor_time > 0.5s OR multiple gap events are flagged.
-Single short events (active_tremor_time < 0.3s) are within normal disfluency range.
+Interpretation guidance:
+  - active_tremor_time < 0.2s: Likely normal disfluency, low significance.
+  - active_tremor_time 0.2–0.5s: Mild pre-voicing anomaly; corroborating signal.
+  - active_tremor_time > 0.5s: Clinically significant motor struggle event.
+  - Multiple flagged gaps: Strong indicator of motor control impairment.
 {json.dumps(false_start_data, indent=2)}
 </data>
 
 <data id="low_confidence_words_summary">
-Words with confidence below -1.5 (pre-filtered):
+Words with confidence below -1.0 (pre-filtered for clinical review):
 {json.dumps(low_confidence, indent=2)}
 </data>
 </context>
 
 <instructions>
-1. Analyse ALL data sections before reaching any conclusion.
-2. Always cite specific numeric values to justify every claim.
-3. Do NOT speculate beyond the data — if a metric is borderline, say so explicitly.
-4. Apply the TWO-DOMAIN RULE: dysarthria_detected must be false unless impairment
-   is independently evident in at least two of: [articulation, prosody, motor_tremor].
-5. Each domain has its own confound risk (listed in the data notes above).
-   Resolve confounds conservatively — when ambiguous, do not penalise the patient.
-6. Do NOT infer one domain from another (e.g., do not infer poor articulation
-   from a slow speaking rate alone).
-7. dysarthria_severity must be null if dysarthria_detected is false.
-8. recommended_exercises must be an empty list if dysarthria_detected is false.
-9. The disclaimer field must contain the exact verbatim string in the schema.
-10. confidence_in_assessment must be 'Low' whenever any metric is borderline
-    or any recording quality concern exists.
+1. Analyse ALL data sections systematically before reaching any conclusion.
+2. Cite specific numeric values for every clinical claim.
+3. Apply the TWO-DOMAIN RULE for dysarthria_detected:
+   - Set to TRUE if clear, measurable impairment is present in at least TWO
+     independent signal domains: [articulation, prosody, motor_tremor].
+   - Exception: Set to TRUE for a single domain if the evidence is
+     unambiguous and severe (e.g., WPM < 50, or a word with CTC < -3.0).
+   - Set to FALSE only when the evidence in each domain is genuinely borderline
+     or explicable by non-pathological factors.
+4. Do NOT automatically dismiss a signal just because a confound is possible.
+   Weigh the evidence; note the alternative explanation but reach a decision.
+5. Do NOT infer across domains (e.g., do not infer articulation failure from
+   slow WPM alone; treat each domain independently first).
+6. dysarthria_severity must be null if dysarthria_detected is false.
+7. recommended_exercises must be an empty list if dysarthria_detected is false.
+8. The disclaimer field must contain the exact verbatim string specified.
+9. confidence_in_assessment should reflect actual certainty:
+   - 'High': Multiple domains show unambiguous impairment.
+   - 'Moderate': Two domains show impairment but at least one is borderline.
+   - 'Low': Only one domain shows impairment, or evidence is genuinely ambiguous.
 </instructions>
 
 <constraints>
-- Tone: Formal, measured, clinical.
+- Tone: Formal, objective, clinically precise.
 - Do not use patient names (anonymised data).
 - Do not include any text outside the JSON structure.
-- Each prose field: 2-4 sentences unless stated otherwise.
-- NEVER use the word 'definitive' when confidence is Low or Moderate.
+- Each prose field: 2–4 sentences unless otherwise specified.
 </constraints>
 
 <task>
-Based solely on the objective metrics provided, generate a conservative, \
-high-specificity clinical screening report. Prioritise avoiding false positives \
-over maximising sensitivity. When in doubt, do not flag dysarthria.
+Based on the objective metrics provided, generate an accurate, balanced clinical \
+screening report. Flag dysarthria when the evidence warrants it; clear the patient \
+when it does not. Accuracy is the goal, not conservatism or permissiveness.
 </task>
 """
 

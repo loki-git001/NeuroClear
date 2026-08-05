@@ -31,11 +31,11 @@ from services.scoring_service import (
 from services.llm_service import generate_clinical_report
 
 # ── Configuration ────────────────────────────────────────────────────────────
-AUDIO_FILE = os.path.join(_PROJECT_ROOT, "data", "raw", "sample.wav")
+AUDIO_FILE = os.path.join(_PROJECT_ROOT, "data", "raw", "sample_2.wav")
 
 # The reference sentence the patient was asked to read aloud.
-# TARGET_TEXT = "This is a Python string method that left-justifies a string by padding"
-TARGET_TEXT = "This is a check volume. This is a check."
+# TARGET_TEXT = "This is a check volume. This is a check."
+TARGET_TEXT = "This is a Python string method that left-justifies a string by padding"
 
 
 def main() -> None:
@@ -204,7 +204,7 @@ def main() -> None:
     )
 
     print("\n" + "-" * 60)
-    print(json.dumps(clinical_report, indent=4))
+    print(json.dumps(clinical_report, indent=4, ensure_ascii=False))
     print("-" * 60)
 
     print("\n" + "=" * 60)
