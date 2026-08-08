@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
-# Import NeuroClear pipeline modules
+# NeuroClear pipeline modules
 from services.whisper_service import transcribe_audio_file
 from services.alignment_service import align_audio_to_text
 from services.slicer_service import slice_audio_by_words

@@ -31,12 +31,18 @@ from services.scoring_service import (
 from services.llm_service import generate_clinical_report
 
 # ── Configuration ────────────────────────────────────────────────────────────
-AUDIO_FILE = os.path.join(_PROJECT_ROOT, "data", "raw", "sample_2.wav")
+AUDIO_FILE = os.path.join(_PROJECT_ROOT, "data", "raw", "sample_3_dys.wav")
 
 # The reference sentence the patient was asked to read aloud.
-# TARGET_TEXT = "This is a check volume. This is a check."
-TARGET_TEXT = "This is a Python string method that left-justifies a string by padding"
 
+# sample.wav
+# TARGET_TEXT = "This is a check volume. This is a check."
+
+# sample_2.wav
+# TARGET_TEXT = "This is a Python string method that left-justifies a string by padding"
+
+# sample_3_dys.wav
+TARGET_TEXT = "Day after day some new episode is reported"
 
 def main() -> None:
     """Run the four-stage NeuroClear pipeline and print results."""
@@ -52,8 +58,6 @@ def main() -> None:
     print("=" * 60)
 
     whisper_result = transcribe_audio_file(AUDIO_FILE)
-    # transcript: str = whisper_result["text"]
-    # transcript: str = "This is a Python string method that left-justifies a string by padding"
     whisper_text: str = whisper_result["text"]  
 
     print(f"\n  Transcript : {whisper_text}")
