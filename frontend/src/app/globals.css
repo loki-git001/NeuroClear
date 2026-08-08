@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/*
+ * NeuroClear — Global Design Tokens
+ * Tailwind v4 uses @theme for custom design tokens.
+ */
+
+@theme inline {
+  /* ── Typography ────────────────────────────────────────── */
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* ── Brand palette ─────────────────────────────────────── */
+  --color-brand-50:  #eef6ff;
+  --color-brand-100: #d9eaff;
+  --color-brand-200: #bcdaff;
+  --color-brand-300: #8ec3ff;
+  --color-brand-400: #58a1ff;
+  --color-brand-500: #327dfc;
+  --color-brand-600: #1c5ef1;
+  --color-brand-700: #1549de;
+  --color-brand-800: #173cb4;
+  --color-brand-900: #19368d;
+  --color-brand-950: #142256;
+
+  /* ── Sidebar tokens ────────────────────────────────────── */
+  --color-sidebar-bg:         #0f172a;
+  --color-sidebar-text:       #94a3b8;
+  --color-sidebar-text-hover: #f1f5f9;
+  --color-sidebar-active-bg:  #1e293b;
+  --color-sidebar-border:     #1e293b;
+}
+
+/* ── Base resets ──────────────────────────────────────────── */
+body {
+  @apply bg-gray-50 text-gray-900 antialiased;
+}
