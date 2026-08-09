@@ -12,7 +12,7 @@ export default function PracticePage() {
             Daily Practice
           </h1>
           <p className="text-sm text-gray-500">
-            Record and analyze your speech session
+            Personalized rehabilitation exercises based on your latest diagnosis
           </p>
         </div>
       </div>

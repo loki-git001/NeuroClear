@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Brain, FileText, Mic } from "lucide-react";
+import { Brain, Mic, Stethoscope, LineChart } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 /* ── Navigation items ────────────────────────────────────────────────────── */
@@ -14,9 +14,9 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
+  { href: "/screening", label: "Diagnostic Screening", icon: Stethoscope },
   { href: "/practice", label: "Daily Practice", icon: Mic },
-  { href: "/report", label: "Diagnostic Report", icon: FileText },
-  { href: "/progress", label: "Progress Tracker", icon: Activity },
+  { href: "/progress", label: "Progress Tracker", icon: LineChart },
 ];
 
 /* ── Sidebar component ───────────────────────────────────────────────────── */
