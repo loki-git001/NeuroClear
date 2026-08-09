@@ -32,7 +32,7 @@ def transcribe_audio_file(file_path: str) -> dict:
     start_time = time.perf_counter()
 
     # Run the model
-    result = asr_pipeline(file_path)
+    result = asr_pipeline(file_path, chunk_length_s=30, return_timestamps=True)
 
     end_time = time.perf_counter()
     inference_time = end_time - start_time

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import shutil
@@ -19,6 +20,7 @@ from services.scoring_service import (
     detect_false_starts,
 )
 from services.llm_service import generate_clinical_report
+from services.cancellation import CancellationToken
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 logger = logging.getLogger("neuroclear")
@@ -83,6 +85,23 @@ def _cleanup_file(path: str) -> None:
         logger.warning("Failed to remove temp file %s: %s", path, err)
 
 
+def _start_disconnect_monitor(request: Request, token: CancellationToken) -> None:
+    """Spins up an async task on the main event loop to watch for client disconnects."""
+    async def _watch():
+        while not token.is_cancelled:
+            if await request.is_disconnected():
+                logger.warning("Client disconnected. Triggering pipeline cancellation.")
+                token.cancel()
+                return
+            await asyncio.sleep(0.5)  # Poll every 500ms
+
+    try:
+        loop = asyncio.get_running_loop()
+        asyncio.run_coroutine_threadsafe(_watch(), loop)
+    except Exception as e:
+        logger.error("Could not start disconnect monitor: %s", e)
+
+
 # ── Routes ───────────────────────────────────────────────────────────────────
 
 @app.get("/health")
@@ -93,6 +112,7 @@ async def health_check():
 
 @app.post("/analyze")
 def analyze_speech(
+    request: Request,
     background_tasks: BackgroundTasks,
     audio_file: UploadFile = File(...),
     target_text: str = Form(...),
@@ -114,6 +134,10 @@ def analyze_speech(
                 ),
             )
 
+        # ── Setup Cancellation Monitor ───────────────────────────────────
+        token = CancellationToken()
+        _start_disconnect_monitor(request, token)
+
         # ── Chunked disk streaming (prevents OOM on large uploads) ───────
         suffix = os.path.splitext(audio_file.filename or "")[1] or ".wav"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -121,10 +145,14 @@ def analyze_speech(
             tmp_path = tmp.name
 
         # ── Stage 1: Whisper ASR ─────────────────────────────────────────
+        if token.is_cancelled:
+            raise HTTPException(status_code=499, detail="Client Disconnected")
         whisper_result = transcribe_audio_file(tmp_path)
         whisper_text = whisper_result.get("text", "")
 
         # ── Stage 2: Forced Alignment ────────────────────────────────────
+        if token.is_cancelled:
+            raise HTTPException(status_code=499, detail="Client Disconnected")
         alignments = align_audio_to_text(tmp_path, target_text)
         if not alignments:
             raise HTTPException(
@@ -133,15 +161,24 @@ def analyze_speech(
             )
 
         # ── Stage 3: Audio Slicing ───────────────────────────────────────
+        if token.is_cancelled:
+            raise HTTPException(status_code=499, detail="Client Disconnected")
         slices = slice_audio_by_words(tmp_path, alignments, sample_rate=16000)
 
         # ── Stage 4: Clinical Scoring Metrics ────────────────────────────
+        if token.is_cancelled:
+            raise HTTPException(status_code=499, detail="Client Disconnected")
         total_audio_duration = alignments[-1]["end"] if alignments else 0.0
         false_starts = detect_false_starts(tmp_path, alignments)
         prosody = calculate_prosody_metrics(alignments, total_audio_duration, false_starts)
         stutter_results = detect_stutters(slices)
 
         # ── Stage 5: Gemini LLM Clinical Report ─────────────────────────
+        # CRITICAL CHECKPOINT: Ensure we don't make an expensive LLM network call 
+        # if the client has already dropped the connection.
+        if token.is_cancelled:
+            raise HTTPException(status_code=499, detail="Client Disconnected")
+            
         clinical_report = generate_clinical_report(
             target_text=target_text,
             patient_text=whisper_text,
@@ -149,6 +186,7 @@ def analyze_speech(
             articulation_data=alignments,
             tremor_data=stutter_results,
             false_start_data=false_starts,
+            cancellation_token=token,
         )
 
         # Schedule temp file cleanup AFTER the response is sent

@@ -19,6 +19,8 @@ from dotenv import load_dotenv
 from google import genai
 from pydantic import BaseModel, Field
 
+from .cancellation import CancellationToken
+
 # ── Load environment & initialise client ────────────────────────────────────
 load_dotenv()
 
@@ -380,6 +382,7 @@ def generate_clinical_report(
     articulation_data: List[Dict[str, Any]],
     tremor_data: List[Dict[str, Any]],
     false_start_data: Optional[List[Dict[str, Any]]] = None,
+    cancellation_token: Optional[CancellationToken] = None,
 ) -> Dict[str, Any]:
     """Generate a structured LLM clinical report from NeuroClear pipeline metrics.
 
@@ -420,6 +423,10 @@ def generate_clinical_report(
     )
 
     print(f"[llm_service] Sending clinical data to {_MODEL} …")
+
+    if cancellation_token and cancellation_token.is_cancelled:
+        print("[llm_service] Cancellation detected. Aborting Gemini API call.")
+        raise Exception("Client disconnected before LLM call")
 
     try:
         interaction = _client.interactions.create(

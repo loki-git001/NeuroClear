@@ -3,18 +3,30 @@
 import { useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
+  AlertTriangle,
   CheckCircle2,
   Loader2,
   Mic,
   MicOff,
+  RefreshCw,
   Square,
 } from "lucide-react";
 
-// ── Types ──────────────────────────────────────────────────────────────────
+// ── Types ───────────────────────────────────────────────────────────────────
 
-type Status = "idle" | "recording" | "processing" | "complete";
+type Status = "idle" | "recording" | "processing" | "complete" | "error";
 
-// Exact pipeline phases, each with a start-offset in milliseconds
+interface ClinicalReport {
+  dysarthria_detected: boolean;
+  severity: string | null;
+  confidence: string;
+  rationale: string;
+  recommended_exercises: string[];
+  [key: string]: unknown; // allow extra fields from the backend
+}
+
+// Pipeline phases — text advances via timeouts, but completion is gated
+// entirely on the real network response resolving. No hard 20s cutoff.
 interface Phase {
   delayMs: number;
   text: string;
@@ -26,27 +38,93 @@ const PIPELINE_PHASES: Phase[] = [
   { delayMs: 8000,  text: "Extracting DSP motor tremor envelopes..." },
   { delayMs: 14000, text: "Generating Gemini clinical report..." },
 ];
-const COMPLETION_DELAY_MS = 20_000;
 
-// ── Component ──────────────────────────────────────────────────────────────
+const API_URL = "http://127.0.0.1:8000/analyze";
+
+// ── Network layer ───────────────────────────────────────────────────────────
+
+async function analyzeAudio(
+  blob: Blob,
+  text: string,
+  signal: AbortSignal
+): Promise<ClinicalReport> {
+  const formData = new FormData();
+  formData.append("target_text", text);
+  // FastAPI requires a filename to correctly interpret the file field
+  formData.append("audio_file", blob, "session.webm");
+
+  const response = await fetch(API_URL, {
+    method: "POST",
+    body: formData,
+    signal, // AbortController signal for race-condition safety on unmount
+  });
+
+  if (!response.ok) {
+    // Try to read the backend's error detail; fall back to a generic message
+    let detail = `Server error ${response.status}`;
+    try {
+      const body = await response.json();
+      detail = body.detail ?? detail;
+    } catch {
+      // response body was not JSON — use the status text
+      detail = response.statusText || detail;
+    }
+    throw new Error(detail);
+  }
+
+  return response.json() as Promise<ClinicalReport>;
+}
+
+// ── Component ───────────────────────────────────────────────────────────────
 
 export default function ScreeningInterface({ passages }: { passages: string[] }) {
-  const [targetText, setTargetText] = useState<string>("");
-  const [status, setStatus]         = useState<Status>("idle");
-  const [audioBlob, setAudioBlob]   = useState<Blob | null>(null);
-  const [audioUrl, setAudioUrl]     = useState<string | null>(null);
+  const [targetText, setTargetText]   = useState<string>("");
+  const [status, setStatus]           = useState<Status>("idle");
+  const [audioBlob, setAudioBlob]     = useState<Blob | null>(null);
+  const [audioUrl, setAudioUrl]       = useState<string | null>(null);
   const [loadingText, setLoadingText] = useState<string>("");
-  const [error, setError]           = useState<string | null>(null);
+  const [resultData, setResultData]   = useState<ClinicalReport | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Refs persist across renders without triggering re-renders
+  // Mic-error is kept separate from the pipeline error state so the inline
+  // banner and the full error-card don't clobber each other
+  const [micError, setMicError]       = useState<string | null>(null);
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef        = useRef<Blob[]>([]);
   const streamRef        = useRef<MediaStream | null>(null);
+  const maxRecordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // AbortController lets us cancel the fetch if the component unmounts
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  // ── Recording logic ────────────────────────────────────────────────────
+  // ── Random sentence selection on mount ──────────────────────────────────
+
+  useEffect(() => {
+    const randomIndex = Math.floor(Math.random() * passages.length);
+    setTargetText(passages[randomIndex]);
+  }, [passages]);
+
+  // ── Cleanup object URL on unmount / change ───────────────────────────────
+
+  useEffect(() => {
+    return () => {
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+    };
+  }, [audioUrl]);
+
+  // ── Abort any in-flight fetch on unmount ─────────────────────────────────
+
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
+
+  // ── Recording ────────────────────────────────────────────────────────────
 
   async function startRecording() {
-    setError(null);
+    setMicError(null);
+    setErrorMessage(null);
     chunksRef.current = [];
 
     try {
@@ -57,9 +135,7 @@ export default function ScreeningInterface({ passages }: { passages: string[] })
       mediaRecorderRef.current = recorder;
 
       recorder.ondataavailable = (e: BlobEvent) => {
-        if (e.data.size > 0) {
-          chunksRef.current.push(e.data);
-        }
+        if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
       recorder.onstop = () => {
@@ -68,7 +144,7 @@ export default function ScreeningInterface({ passages }: { passages: string[] })
         setAudioBlob(blob);
         setAudioUrl(url);
 
-        // Kill the red mic indicator in the browser immediately
+        // Release the browser's red microphone indicator immediately
         streamRef.current?.getTracks().forEach((t) => t.stop());
 
         setStatus("processing");
@@ -76,76 +152,113 @@ export default function ScreeningInterface({ passages }: { passages: string[] })
 
       recorder.start();
       setStatus("recording");
+
+      // Start the 60-second safety cutoff
+      maxRecordingTimerRef.current = setTimeout(() => {
+        console.log("60-second max limit reached. Auto-stopping...");
+        stopRecording();
+      }, 60000);
     } catch (err) {
       const message =
         err instanceof DOMException && err.name === "NotAllowedError"
           ? "Microphone access was denied. Please allow microphone permissions and try again."
           : "Could not access your microphone. Please check your device settings.";
-      setError(message);
+      setMicError(message);
     }
   }
 
   function stopRecording() {
+    if (maxRecordingTimerRef.current) {
+      clearTimeout(maxRecordingTimerRef.current);
+    }
     mediaRecorderRef.current?.stop();
-    // onstop handler above will set status to "processing"
+    // onstop fires → blob is ready → status becomes "processing"
   }
 
-  // ── Phased loading sequence ────────────────────────────────────────────
+  // ── Phased loading text + real network call ───────────────────────────────
+  //
+  // When status becomes "processing" we:
+  //   1. Schedule the phase-text animations (no forced completion timeout).
+  //   2. Fire the real fetch with an AbortController for unmount safety.
+  //   3. On success  → set resultData + "complete".
+  //   4. On error    → set errorMessage + "error".
 
   useEffect(() => {
     if (status !== "processing") return;
+    if (!audioBlob || !targetText) return;
 
+    // ── Phase text timers (no completion timer — that's the network's job) ──
     const timers: ReturnType<typeof setTimeout>[] = [];
-
-    // Schedule each phase text update
     PIPELINE_PHASES.forEach(({ delayMs, text }) => {
       timers.push(setTimeout(() => setLoadingText(text), delayMs));
     });
 
-    // Schedule completion
-    timers.push(
-      setTimeout(() => setStatus("complete"), COMPLETION_DELAY_MS)
-    );
+    // ── Real fetch ──────────────────────────────────────────────────────────
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
-    // Cleanup: cancel all pending timers if component unmounts mid-pipeline
-    return () => timers.forEach(clearTimeout);
-  }, [status]);
+    analyzeAudio(audioBlob, targetText, controller.signal)
+      .then((data: ClinicalReport) => {
+        // Log the raw payload for debugging
+        console.log("Gemini Output:", data);
 
-  // ── Random sentence selection on mount ───────────────────────────────────
+        // Cache the exercises in localStorage for the Progress Tracker page
+        try {
+          localStorage.setItem(
+            "neuroclear_exercises",
+            JSON.stringify(data.recommended_exercises ?? [])
+          );
+        } catch {
+          // localStorage unavailable in some environments — non-fatal
+        }
 
-  useEffect(() => {
-    // Pick a random sentence only once when the client mounts.
-    // This avoids Server/Client hydration mismatch errors.
-    const randomIndex = Math.floor(Math.random() * passages.length);
-    setTargetText(passages[randomIndex]);
-  }, [passages]);
+        setResultData(data);
+        setStatus("complete");
+      })
+      .catch((err: unknown) => {
+        // Ignore errors from intentional AbortController cancellation
+        if (err instanceof DOMException && err.name === "AbortError") return;
 
-  // ── Cleanup object URL on unmount to prevent memory leaks ─────────────
+        const message =
+          err instanceof Error
+            ? err.message
+            : "An unexpected error occurred during analysis.";
+        setErrorMessage(message);
+        setStatus("error");
+      });
 
-  useEffect(() => {
     return () => {
-      if (audioUrl) URL.revokeObjectURL(audioUrl);
+      timers.forEach(clearTimeout);
+      controller.abort(); // cancel the fetch if status changes before it resolves
     };
-  }, [audioUrl]);
+  }, [status, audioBlob, targetText]);
 
-  // ── Reset helper ───────────────────────────────────────────────────────
+  // ── Reset ─────────────────────────────────────────────────────────────────
 
   function reset() {
+    abortControllerRef.current?.abort();
     if (audioUrl) URL.revokeObjectURL(audioUrl);
+
     setStatus("idle");
     setAudioBlob(null);
     setAudioUrl(null);
     setLoadingText("");
-    setError(null);
+    setResultData(null);
+    setErrorMessage(null);
+    setMicError(null);
     chunksRef.current = [];
+
+    // Pick a new passage for the next session
+    const randomIndex = Math.floor(Math.random() * passages.length);
+    setTargetText(passages[randomIndex]);
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col items-center gap-6">
 
-      {/* ── Target sentence card ──────────────────────────────────────── */}
+      {/* ── Target sentence card ───────────────────────────────────────────── */}
       <div className="w-full rounded-xl border border-blue-100 bg-blue-50 px-5 py-4 shadow-sm">
         <p className="mb-2 text-xs font-bold uppercase tracking-wider text-blue-600">
           Read this passage aloud
@@ -155,22 +268,27 @@ export default function ScreeningInterface({ passages }: { passages: string[] })
         </p>
       </div>
 
-      {/* ── Status card ─────────────────────────────────────────────────── */}
+      {/* ── Status card ───────────────────────────────────────────────────── */}
       <div className="relative w-full overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
 
-        {/* Subtle top accent bar that changes colour by status */}
+        {/* Top accent bar — colour tracks status */}
         <div
           className={`h-1 w-full transition-all duration-700 ${
-            status === "idle"       ? "bg-gray-200"
-            : status === "recording"  ? "animate-pulse bg-red-500"
-            : status === "processing" ? "bg-brand-500"
-            : /* complete */           "bg-emerald-500"
+            status === "idle"
+              ? "bg-gray-200"
+              : status === "recording"
+              ? "animate-pulse bg-red-500"
+              : status === "processing"
+              ? "bg-brand-500"
+              : status === "complete"
+              ? "bg-emerald-500"
+              : /* error */ "bg-amber-500"
           }`}
         />
 
         <div className="flex flex-col items-center gap-6 px-8 py-10">
 
-          {/* ── Idle ──────────────────────────────────────────────────── */}
+          {/* ── Idle ──────────────────────────────────────────────────────── */}
           {status === "idle" && (
             <>
               <div className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-gray-200 bg-gray-50">
@@ -200,10 +318,9 @@ export default function ScreeningInterface({ passages }: { passages: string[] })
             </>
           )}
 
-          {/* ── Recording ─────────────────────────────────────────────── */}
+          {/* ── Recording ─────────────────────────────────────────────────── */}
           {status === "recording" && (
             <>
-              {/* Pulsing red ring around mic icon */}
               <div className="relative flex h-20 w-20 items-center justify-center">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-30" />
                 <div className="relative flex h-20 w-20 items-center justify-center rounded-full border-2 border-red-500 bg-red-50">
@@ -215,7 +332,7 @@ export default function ScreeningInterface({ passages }: { passages: string[] })
                   Recording…
                 </p>
                 <p className="mt-1 text-sm text-gray-500">
-                  Speak clearly. Press stop when you are finished.
+                  Speak clearly. Auto-stops after 60 seconds.
                 </p>
               </div>
               <button
@@ -233,7 +350,7 @@ export default function ScreeningInterface({ passages }: { passages: string[] })
             </>
           )}
 
-          {/* ── Processing ────────────────────────────────────────────── */}
+          {/* ── Processing ────────────────────────────────────────────────── */}
           {status === "processing" && (
             <>
               <div className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-brand-200 bg-brand-50">
@@ -248,7 +365,7 @@ export default function ScreeningInterface({ passages }: { passages: string[] })
                 </p>
               </div>
 
-              {/* Pipeline progress steps */}
+              {/* Live pipeline checklist */}
               <div className="flex w-full max-w-xs flex-col gap-2">
                 {PIPELINE_PHASES.map(({ text }) => {
                   const currentIndex = PIPELINE_PHASES.findIndex(
@@ -257,8 +374,8 @@ export default function ScreeningInterface({ passages }: { passages: string[] })
                   const stepIndex = PIPELINE_PHASES.findIndex(
                     (p) => p.text === text
                   );
-                  const done    = stepIndex < currentIndex;
-                  const active  = stepIndex === currentIndex;
+                  const done   = stepIndex < currentIndex;
+                  const active = stepIndex === currentIndex;
 
                   return (
                     <div key={text} className="flex items-center gap-3">
@@ -291,7 +408,7 @@ export default function ScreeningInterface({ passages }: { passages: string[] })
             </>
           )}
 
-          {/* ── Complete ──────────────────────────────────────────────── */}
+          {/* ── Complete ──────────────────────────────────────────────────── */}
           {status === "complete" && (
             <>
               <div className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-emerald-500 bg-emerald-50">
@@ -310,17 +427,50 @@ export default function ScreeningInterface({ passages }: { passages: string[] })
                 </p>
               </div>
 
-              {/* Audio playback — stretch goal */}
+              {/* Quick result summary if we have the data */}
+              {resultData && (
+                <div 
+                  className={`w-full rounded-xl border px-4 py-3 ${
+                    resultData.dysarthria_detected 
+                      ? "border-red-200 bg-red-50" 
+                      : "border-emerald-100 bg-emerald-50"
+                  }`}
+                >
+                  <p 
+                    className={`text-xs font-semibold uppercase tracking-wider ${
+                      resultData.dysarthria_detected ? "text-red-700" : "text-emerald-700"
+                    }`}
+                  >
+                    Dysarthria detected:{" "}
+                    <span
+                      className={
+                        resultData.dysarthria_detected
+                          ? "text-red-600"
+                          : "text-emerald-600"
+                      }
+                    >
+                      {resultData.dysarthria_detected ? "Yes" : "No"}
+                    </span>
+                  </p>
+                  {resultData.severity && (
+                    <p 
+                      className={`mt-0.5 text-xs ${
+                        resultData.dysarthria_detected ? "text-red-700" : "text-emerald-700"
+                      }`}
+                    >
+                      Severity: <span className="font-medium">{resultData.severity}</span>
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Audio playback */}
               {audioUrl && (
                 <div className="w-full rounded-xl border border-gray-200 bg-gray-50 p-4">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
                     Session Recording
                   </p>
-                  <audio
-                    controls
-                    src={audioUrl}
-                    className="w-full rounded-lg"
-                  />
+                  <audio controls src={audioUrl} className="w-full rounded-lg" />
                   <p className="mt-2 text-[11px] text-gray-400">
                     {audioBlob
                       ? `File size: ${(audioBlob.size / 1024).toFixed(1)} KB`
@@ -344,18 +494,83 @@ export default function ScreeningInterface({ passages }: { passages: string[] })
             </>
           )}
 
+          {/* ── Error (pipeline / network failure) ───────────────────────── */}
+          {status === "error" && (
+            <>
+              <div className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-amber-400 bg-amber-50">
+                <AlertTriangle className="h-9 w-9 text-amber-500" />
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-semibold text-gray-800">
+                  Analysis Failed
+                </p>
+                <p className="mt-1 text-sm text-gray-500">
+                  The pipeline could not complete your session.
+                </p>
+              </div>
+
+              {/* Error detail card */}
+              <div className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                  <div>
+                    <p className="text-xs font-semibold text-amber-800">
+                      Backend Error
+                    </p>
+                    <p className="mt-0.5 text-xs text-amber-700">
+                      {errorMessage ?? "An unexpected error occurred."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                {/* Retry — reuses the existing blob + text, re-fires the fetch */}
+                <button
+                  onClick={() => {
+                    setErrorMessage(null);
+                    setStatus("processing");
+                  }}
+                  className="
+                    inline-flex items-center gap-2 rounded-xl bg-brand-600
+                    px-5 py-2.5 text-sm font-semibold text-white shadow-md
+                    shadow-brand-600/25 transition-all duration-200
+                    hover:bg-brand-700 active:scale-95
+                  "
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Retry Analysis
+                </button>
+
+                {/* Full reset — starts a completely new session */}
+                <button
+                  onClick={reset}
+                  className="
+                    inline-flex items-center gap-2 rounded-xl border border-gray-200
+                    bg-white px-5 py-2.5 text-sm font-semibold text-gray-700
+                    shadow-sm transition-all duration-200 hover:border-gray-300
+                    hover:bg-gray-50 active:scale-95
+                  "
+                >
+                  <MicOff className="h-4 w-4" />
+                  New Session
+                </button>
+              </div>
+            </>
+          )}
+
         </div>
       </div>
 
-      {/* ── Error banner ────────────────────────────────────────────────── */}
-      {error && (
+      {/* ── Microphone permission error banner (only shown in idle) ─────────── */}
+      {micError && (
         <div className="flex w-full items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
           <div>
             <p className="text-sm font-semibold text-red-700">
               Microphone Error
             </p>
-            <p className="mt-0.5 text-sm text-red-600">{error}</p>
+            <p className="mt-0.5 text-sm text-red-600">{micError}</p>
           </div>
         </div>
       )}
