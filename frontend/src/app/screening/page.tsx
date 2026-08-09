@@ -1,9 +1,13 @@
 import { Stethoscope } from "lucide-react";
+import ScreeningInterface from "./screening-interface";
+import { CLINICAL_PASSAGES } from "@/lib/constants";
 
 export default function ScreeningPage() {
   return (
-    <div className="p-8">
-      <div className="flex items-center gap-3">
+    <div className="min-h-full bg-gray-50 p-8">
+
+      {/* ── Page header ───────────────────────────────────────────────── */}
+      <div className="mb-8 flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-100">
           <Stethoscope className="h-5 w-5 text-brand-700" />
         </div>
@@ -16,6 +20,12 @@ export default function ScreeningPage() {
           </p>
         </div>
       </div>
+
+      {/* ── Recording interface ────────────────────────────────────────── */}
+      <div className="mx-auto max-w-lg">
+        <ScreeningInterface passages={CLINICAL_PASSAGES} />
+      </div>
+
     </div>
   );
 }
