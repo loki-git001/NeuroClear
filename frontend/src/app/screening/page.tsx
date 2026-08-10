@@ -22,7 +22,7 @@ export default function ScreeningPage() {
       </div>
 
       {/* ── Recording interface ────────────────────────────────────────── */}
-      <div className="mx-auto max-w-lg">
+      <div className="mx-auto w-full max-w-5xl">
         <ScreeningInterface passages={CLINICAL_PASSAGES} />
       </div>
 
