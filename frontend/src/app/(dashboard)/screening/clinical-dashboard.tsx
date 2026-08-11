@@ -103,7 +103,7 @@ export default function ClinicalDashboard({ report }: ClinicalReportProps) {
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
           <div className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-4">
             <Waves className="h-5 w-5 text-brand-600" />
-            <h2 className="text-base font-bold text-gray-900">Prosody & Pacing</h2>
+            <h2 className="text-base font-bold text-gray-900">Prosody &amp; Pacing</h2>
           </div>
           <p className="mb-4 text-sm text-gray-600">
             {report.prosody_evaluation}
@@ -113,7 +113,7 @@ export default function ClinicalDashboard({ report }: ClinicalReportProps) {
               <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
               <div>
                 <h3 className="text-xs font-bold uppercase tracking-wider text-blue-800">
-                  Respiration & Pauses
+                  Respiration &amp; Pauses
                 </h3>
                 <p className="mt-1 text-xs text-blue-900 leading-relaxed">
                   {report.max_silent_pause_note}
@@ -128,7 +128,7 @@ export default function ClinicalDashboard({ report }: ClinicalReportProps) {
       <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
         <div className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-4">
           <Activity className="h-5 w-5 text-brand-600" />
-          <h2 className="text-base font-bold text-gray-900">Motor Tremor & Envelope DSP</h2>
+          <h2 className="text-base font-bold text-gray-900">Motor Tremor &amp; Envelope DSP</h2>
         </div>
         <p className="mb-5 text-sm text-gray-600">
           {report.motor_tremor_assessment}

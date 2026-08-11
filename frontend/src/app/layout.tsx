@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "./sidebar";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -21,15 +20,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} h-full`}>
       <body className="h-full">
-        <div className="flex h-screen overflow-hidden">
-          {/* ── Persistent Sidebar (never re-renders on route change) ── */}
-          <Sidebar />
-
-          {/* ── Main content area — route pages mount/unmount here ──── */}
-          <main className="flex-1 overflow-y-auto">
-            {children}
-          </main>
-        </div>
+        {children}
       </body>
     </html>
   );

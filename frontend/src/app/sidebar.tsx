@@ -27,7 +27,7 @@ export function Sidebar() {
   return (
     <aside className="flex w-64 flex-col border-r border-sidebar-border bg-sidebar-bg">
       {/* ── Brand header ─────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 border-b border-sidebar-border px-6 py-5">
+      <Link href="/" className="flex items-center gap-3 border-b border-sidebar-border px-6 py-5 transition-colors hover:bg-brand-950/50">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 shadow-md shadow-brand-600/30">
           <Brain className="h-5 w-5 text-white" />
         </div>
@@ -39,7 +39,7 @@ export function Sidebar() {
             Speech Analysis
           </p>
         </div>
-      </div>
+      </Link>
 
       {/* ── Navigation links ─────────────────────────────────────────── */}
       <nav className="flex-1 space-y-1 px-3 py-4">

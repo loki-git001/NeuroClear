@@ -21,7 +21,7 @@ const historicalData = [
   { date: "Jul 15", wpm: 55, tremors: 8, severity: "Severe" },
   { date: "Jul 22", wpm: 62, tremors: 7, severity: "Moderate-Severe" },
   { date: "Jul 29", wpm: 68, tremors: 5, severity: "Moderate-Severe" },
-  { date: "Aug 05", wpm: 78, tremors: 4, severity: "Moderate" },
+  { date: "Aug 05", wpm: 60, tremors: 4, severity: "Moderate" },
 ];
 
 const CustomTooltip = ({ active, payload, label }: any) => {
