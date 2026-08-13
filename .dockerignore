@@ -1,0 +1,33 @@
+# ── Version control ───────────────────────────────────────────────────────────
+.git
+.gitignore
+
+# ── Frontend (Next.js) — never copy into the Python container ─────────────────
+frontend/
+
+# ── Python virtual environments ───────────────────────────────────────────────
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# ── Development / research files ─────────────────────────────────────────────
+notebooks/
+data/
+scripts/
+
+# ── Environment & secrets ─────────────────────────────────────────────────────
+.env
+.env.*
+
+# ── Python project management files (not needed at runtime) ──────────────────
+pyproject.toml
+uv.lock
+.python-version
+
+# ── Misc ─────────────────────────────────────────────────────────────────────
+README.md
+LICENSE
+Dockerfile
+.dockerignore
