@@ -57,7 +57,9 @@ const PIPELINE_PHASES: Phase[] = [
   { delayMs: 14000, text: "Generating Gemini clinical report..." },
 ];
 
-const API_URL = "http://13.53.186.36:8000/analyze";
+// Next.js injects environment variables prefixed with NEXT_PUBLIC_ into the browser bundle.
+// If the variable is missing (e.g., in a local test), it safely falls back to localhost.
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/analyze";
 const MOCK_API = false; // Set to false to hit the real FastAPI backend
 
 // ── Network layer ───────────────────────────────────────────────────────────
