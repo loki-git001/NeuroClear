@@ -196,9 +196,9 @@ def analyze_speech(
         # ── Stage 3: Audio Slicing ───────────────────────────────────────
         if token.is_cancelled:
             raise HTTPException(status_code=499, detail="Client Disconnected")
-        # Use /app/data as the output root (owned by appuser in Docker)
+        # Use absolute path to /app/data (owned by appuser via Docker tmpfs mount)
         source_stem = os.path.splitext(os.path.basename(tmp_path))[0]
-        sliced_dir = os.path.join("data", "sliced", source_stem)
+        sliced_dir = os.path.join("/app", "data", "sliced", source_stem)
         slices = slice_audio_by_words(
             tmp_path, alignments, output_dir=sliced_dir, sample_rate=16000
         )
