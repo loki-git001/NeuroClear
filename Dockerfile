@@ -17,9 +17,16 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # Set uv to install packages directly into the system python instead of a venv
 ENV UV_PROJECT_ENVIRONMENT="/usr/local"
 
-COPY pyproject.toml uv.lock ./
-# --no-dev ensures we DO NOT install heavy dev tools like jupyter or datasets
-RUN uv sync --no-dev --frozen
+COPY pyproject.toml ./
+
+# ── Force CPU-only PyTorch for AWS Free Tier ──────────────────────────────────
+# Rewrite the local pyproject.toml on-the-fly to use the CPU index instead of CUDA.
+# This prevents downloading gigabytes of NVIDIA drivers onto the small AWS disk.
+RUN sed -i 's/pytorch-cu130/pytorch-cpu/g' pyproject.toml && \
+    sed -i 's|https://download.pytorch.org/whl/cu130|https://download.pytorch.org/whl/cpu|g' pyproject.toml
+
+# --no-dev excludes heavy tools. We drop --frozen so uv generates a fresh CPU lockfile.
+RUN uv sync --no-dev
 
 # ── Backend source code ───────────────────────────────────────────────────────
 # Copy ONLY the backend files. The frontend/ folder, .git/, .venv/, notebooks/,
