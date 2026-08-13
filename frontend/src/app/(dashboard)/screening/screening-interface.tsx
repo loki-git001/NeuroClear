@@ -58,7 +58,7 @@ const PIPELINE_PHASES: Phase[] = [
 ];
 
 const API_URL = "http://127.0.0.1:8000/analyze";
-const MOCK_API = true; // Set to false to hit the real FastAPI backend
+const MOCK_API = false; // Set to false to hit the real FastAPI backend
 
 // ── Network layer ───────────────────────────────────────────────────────────
 
@@ -240,7 +240,7 @@ export default function ScreeningInterface({ passages }: { passages: string[] })
 
       // Start the 60-second safety cutoff
       maxRecordingTimerRef.current = setTimeout(() => {
-        console.log("60-second max limit reached. Auto-stopping...");
+        // console.log("60-second max limit reached. Auto-stopping...");
         stopRecording();
       }, 60000);
     } catch (err) {
@@ -285,7 +285,7 @@ export default function ScreeningInterface({ passages }: { passages: string[] })
     analyzeAudio(audioBlob, targetText, controller.signal)
       .then((data: ClinicalReport) => {
         // Log the raw payload for debugging
-        console.log("Gemini Output:", data);
+        // console.log("Gemini Output:", data);
 
         // Cache the exercises and the full report in localStorage for persistence
         try {

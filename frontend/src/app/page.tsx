@@ -128,7 +128,7 @@ export default function LandingPage() {
       <footer className="border-t border-gray-100 bg-white py-8 text-center">
         <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
           <ShieldCheck className="h-4 w-4" />
-          <span>NeuroClear v1.0.0 — Hackathon MVP</span>
+          <span>NeuroClear v1.0.0 — MVP</span>
         </div>
       </footer>
       
