@@ -26,7 +26,8 @@ RUN sed -i 's/pytorch-cu130/pytorch-cpu/g' pyproject.toml && \
     sed -i 's|https://download.pytorch.org/whl/cu130|https://download.pytorch.org/whl/cpu|g' pyproject.toml
 
 # --no-dev excludes heavy tools. We drop --frozen so uv generates a fresh CPU lockfile.
-RUN uv sync --no-dev
+# --no-cache is CRITICAL for AWS Free Tier to prevent uv from storing redundant gigabytes in /root/.cache/uv
+RUN uv sync --no-dev --no-cache
 
 # ── Backend source code ───────────────────────────────────────────────────────
 # Copy ONLY the backend files. The frontend/ folder, .git/, .venv/, notebooks/,
