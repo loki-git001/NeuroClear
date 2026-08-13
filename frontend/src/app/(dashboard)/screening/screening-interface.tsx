@@ -57,7 +57,7 @@ const PIPELINE_PHASES: Phase[] = [
   { delayMs: 14000, text: "Generating Gemini clinical report..." },
 ];
 
-const API_URL = "http://127.0.0.1:8000/analyze";
+const API_URL = "http://13.53.186.36:8000/analyze";
 const MOCK_API = false; // Set to false to hit the real FastAPI backend
 
 // ── Network layer ───────────────────────────────────────────────────────────

@@ -9,6 +9,9 @@ from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadF
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # NeuroClear pipeline modules
 from services.whisper_service import transcribe_audio_file
@@ -26,6 +29,8 @@ from services.cancellation import CancellationToken
 logger = logging.getLogger("neuroclear")
 
 # ── Constants ────────────────────────────────────────────────────────────────
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB — a 60-second clinical recording
+
 ALLOWED_AUDIO_TYPES = {
     "audio/wav", "audio/x-wav", "audio/wave",
     "audio/mpeg", "audio/mp3",
@@ -39,6 +44,12 @@ app = FastAPI(
     description="Automated Speech Pathology & Dysarthria Screening API",
     version="1.0.0",
 )
+
+# ── Rate Limiting ────────────────────────────────────────────────────────────
+# Limits incoming requests by the client's IP address
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 class PipelineTimingMiddleware(BaseHTTPMiddleware):
@@ -85,6 +96,15 @@ def _cleanup_file(path: str) -> None:
         logger.warning("Failed to remove temp file %s: %s", path, err)
 
 
+def _cleanup_dir(path: str) -> None:
+    """Recursively remove a temporary directory. Prevents disk exhaustion."""
+    try:
+        if path and os.path.isdir(path):
+            shutil.rmtree(path, ignore_errors=True)
+    except OSError as err:
+        logger.warning("Failed to remove temp dir %s: %s", path, err)
+
+
 def _start_disconnect_monitor(request: Request, token: CancellationToken) -> None:
     """Spins up an async task on the main event loop to watch for client disconnects."""
     async def _watch():
@@ -111,6 +131,7 @@ async def health_check():
 
 
 @app.post("/analyze")
+@limiter.limit("5/minute")  # Restrict to 5 uploads per minute per IP
 def analyze_speech(
     request: Request,
     background_tasks: BackgroundTasks,
@@ -122,6 +143,7 @@ def analyze_speech(
     Runs the 5-stage NeuroClear pipeline and returns a structured clinical report.
     """
     tmp_path = ""
+    sliced_dir = ""  # Track the sliced audio directory for guaranteed cleanup
     try:
         # ── Input validation ─────────────────────────────────────────────
         content_type = (audio_file.content_type or "").lower()
@@ -134,14 +156,25 @@ def analyze_speech(
                 ),
             )
 
+        # ── File size enforcement (prevents disk exhaustion attacks) ─────
+        file_bytes = audio_file.file.read()
+        if len(file_bytes) > MAX_UPLOAD_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"File too large ({len(file_bytes) / (1024*1024):.1f} MB). "
+                    f"Maximum allowed size is {MAX_UPLOAD_SIZE / (1024*1024):.0f} MB."
+                ),
+            )
+
         # ── Setup Cancellation Monitor ───────────────────────────────────
         token = CancellationToken()
         _start_disconnect_monitor(request, token)
 
-        # ── Chunked disk streaming (prevents OOM on large uploads) ───────
+        # ── Write validated bytes to a temp file ─────────────────────────
         suffix = os.path.splitext(audio_file.filename or "")[1] or ".wav"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            shutil.copyfileobj(audio_file.file, tmp)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir="/tmp") as tmp:
+            tmp.write(file_bytes)
             tmp_path = tmp.name
 
         # ── Stage 1: Whisper ASR ─────────────────────────────────────────
@@ -163,7 +196,12 @@ def analyze_speech(
         # ── Stage 3: Audio Slicing ───────────────────────────────────────
         if token.is_cancelled:
             raise HTTPException(status_code=499, detail="Client Disconnected")
-        slices = slice_audio_by_words(tmp_path, alignments, sample_rate=16000)
+        # Use /app/data as the output root (owned by appuser in Docker)
+        source_stem = os.path.splitext(os.path.basename(tmp_path))[0]
+        sliced_dir = os.path.join("data", "sliced", source_stem)
+        slices = slice_audio_by_words(
+            tmp_path, alignments, output_dir=sliced_dir, sample_rate=16000
+        )
 
         # ── Stage 4: Clinical Scoring Metrics ────────────────────────────
         if token.is_cancelled:
@@ -189,23 +227,23 @@ def analyze_speech(
             cancellation_token=token,
         )
 
-        # Schedule temp file cleanup AFTER the response is sent
-        background_tasks.add_task(_cleanup_file, tmp_path)
-
         return clinical_report
 
     except HTTPException:
         # Re-raise client errors (400, 415) without wrapping them
-        _cleanup_file(tmp_path)
         raise
 
     except Exception as err:
-        _cleanup_file(tmp_path)
         logger.error("Pipeline failed: %s", err, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="An internal error occurred during analysis. Please try again.",
         )
+
+    finally:
+        # ── GUARANTEED CLEANUP — runs on success, error, or cancellation ──
+        _cleanup_file(tmp_path)
+        _cleanup_dir(sliced_dir)
 
 
 if __name__ == "__main__":

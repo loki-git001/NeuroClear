@@ -48,6 +48,11 @@ print('[Docker] Model weights baked into image successfully.')"
 # ── Security: run as non-root user ───────────────────────────────────────────
 # The app accepts arbitrary audio file uploads; never run that as root.
 RUN useradd --create-home --shell /bin/bash appuser
+
+# Create the data directory and give ownership ONLY to appuser.
+# Source code in /app remains owned by root (read-only to appuser) — Principle of Least Privilege.
+RUN mkdir -p /app/data && chown appuser:appuser /app/data
+
 USER appuser
 
 # ── Runtime ───────────────────────────────────────────────────────────────────
