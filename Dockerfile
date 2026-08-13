@@ -10,11 +10,16 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg libsndfile1 \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Python dependencies ───────────────────────────────────────────────────────
-# Use Astral's 'uv' for massively faster dependency resolution and installation
+# ── Python dependencies (Modern uv sync) ──────────────────────────────────────
+# Use Astral's 'uv' for massively faster dependency resolution
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-COPY requirements.txt .
-RUN uv pip install --system --no-cache -r requirements.txt
+
+# Set uv to install packages directly into the system python instead of a venv
+ENV UV_PROJECT_ENVIRONMENT="/usr/local"
+
+COPY pyproject.toml uv.lock ./
+# --no-dev ensures we DO NOT install heavy dev tools like jupyter or datasets
+RUN uv sync --no-dev --frozen
 
 # ── Backend source code ───────────────────────────────────────────────────────
 # Copy ONLY the backend files. The frontend/ folder, .git/, .venv/, notebooks/,
