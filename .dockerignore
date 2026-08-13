@@ -21,9 +21,7 @@ scripts/
 .env
 .env.*
 
-# ── Python project management files (not needed at runtime) ──────────────────
-pyproject.toml
-uv.lock
+# ── Python project management files ──────────────────
 .python-version
 
 # ── Misc ─────────────────────────────────────────────────────────────────────
