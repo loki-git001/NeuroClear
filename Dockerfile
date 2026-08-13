@@ -11,9 +11,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Python dependencies ───────────────────────────────────────────────────────
-# Copy requirements first so Docker layer cache is preserved on code-only changes
+# Use Astral's 'uv' for massively faster dependency resolution and installation
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN uv pip install --system --no-cache -r requirements.txt
 
 # ── Backend source code ───────────────────────────────────────────────────────
 # Copy ONLY the backend files. The frontend/ folder, .git/, .venv/, notebooks/,

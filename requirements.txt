@@ -160,10 +160,10 @@ terminado==0.18.1
 threadpoolctl==3.6.0
 tinycss2==1.5.1
 tokenizers==0.22.2
-torch==2.13.0+cu130
-torchaudio==2.11.0+cu130
-torchcodec==0.15.0+cu130
-torchvision==0.28.0+cu130
+torch==2.13.0
+torchaudio==2.11.0
+torchcodec==0.15.0
+torchvision==0.28.0
 tornado==6.5.7
 tqdm==4.70.0
 traitlets==5.16.0
