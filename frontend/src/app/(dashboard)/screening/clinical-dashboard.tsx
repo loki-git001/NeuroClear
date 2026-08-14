@@ -1,4 +1,5 @@
-import { Activity, Brain, Info, Mic, ShieldAlert, Waves } from "lucide-react";
+import Link from "next/link";
+import { Activity, Brain, Info, Mic, ShieldAlert, Waves, ArrowRight, Dumbbell } from "lucide-react";
 
 // ── TypeScript Interfaces mapping to Python Backend ──────────────────────
 
@@ -30,6 +31,7 @@ interface ClinicalReportProps {
     confidence_in_assessment: string;
     primary_deficit_summary: string;
     disclaimer: string;
+    recommended_exercises?: any[];
   };
 }
 
@@ -169,7 +171,33 @@ export default function ClinicalDashboard({ report }: ClinicalReportProps) {
         )}
       </div>
 
-      {/* ── 4. Medical Disclaimer ────────────────────────────────────────────── */}
+      {/* ── 4. Recommended Exercises CTA ─────────────────────────────────────── */}
+      {report.recommended_exercises && report.recommended_exercises.length > 0 && (
+        <div className="flex flex-col items-center justify-between gap-4 rounded-2xl border border-brand-200 bg-brand-50 p-6 shadow-sm md:flex-row">
+          <div>
+            <h2 className="flex items-center gap-2 text-lg font-bold text-brand-900">
+              <Dumbbell className="h-5 w-5 text-brand-600" />
+              Personalized Therapy Plan Ready
+            </h2>
+            <p className="mt-1 text-sm text-brand-700">
+              Based on your diagnosis, we have generated {report.recommended_exercises.length} custom exercises to improve your speech motor control.
+            </p>
+          </div>
+          <Link
+            href="/practice"
+            className="
+              inline-flex shrink-0 items-center gap-2 rounded-xl bg-brand-600 px-6 py-3
+              text-sm font-bold text-white shadow-md shadow-brand-600/25 transition-all
+              hover:bg-brand-700 active:scale-95
+            "
+          >
+            Start Daily Practice
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      )}
+
+      {/* ── 5. Medical Disclaimer ────────────────────────────────────────────── */}
       <div className="flex items-start gap-3 rounded-xl bg-gray-100 p-4 text-gray-500">
         <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
         <p className="text-xs font-medium leading-relaxed">
