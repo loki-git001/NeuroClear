@@ -130,6 +130,9 @@ async function analyzeAudio(
 
   const response = await fetch(API_URL, {
     method: "POST",
+    headers: {
+      "ngrok-skip-browser-warning": "true",
+    },
     body: formData,
     signal, // AbortController signal for race-condition safety on unmount
   });
