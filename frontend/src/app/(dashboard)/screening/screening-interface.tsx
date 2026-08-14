@@ -10,7 +10,8 @@ import {
   MicOff,
   RefreshCw,
   Square,
-  ClipboardList
+  ClipboardList,
+  XCircle,
 } from "lucide-react";
 import ClinicalDashboard from "./clinical-dashboard";
 
@@ -262,6 +263,24 @@ export default function ScreeningInterface({ passages }: { passages: string[] })
     // onstop fires → blob is ready → status becomes "processing"
   }
 
+  function cancelRecording() {
+    // Clear the 60-second safety timer
+    if (maxRecordingTimerRef.current) {
+      clearTimeout(maxRecordingTimerRef.current);
+    }
+    // Suppress onstop from triggering the analysis pipeline
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.onstop = null;
+      mediaRecorderRef.current.stop();
+    }
+    // Kill the microphone red indicator in the browser
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    // Discard any chunks recorded so far
+    chunksRef.current = [];
+    // Return to idle — user can start a fresh recording
+    setStatus("idle");
+  }
+
   // ── Phased loading text + real network call ───────────────────────────────
   //
   // When status becomes "processing" we:
@@ -432,18 +451,33 @@ export default function ScreeningInterface({ passages }: { passages: string[] })
                   Speak clearly. Auto-stops after 60 seconds.
                 </p>
               </div>
-              <button
-                onClick={stopRecording}
-                className="
-                  inline-flex items-center gap-2 rounded-xl bg-red-600
-                  px-6 py-3 text-sm font-semibold text-white shadow-md
-                  shadow-red-600/25 transition-all duration-200
-                  hover:bg-red-700 active:scale-95
-                "
-              >
-                <Square className="h-4 w-4 fill-white" />
-                Stop &amp; Analyze
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={stopRecording}
+                  className="
+                    inline-flex items-center gap-2 rounded-xl bg-red-600
+                    px-6 py-3 text-sm font-semibold text-white shadow-md
+                    shadow-red-600/25 transition-all duration-200
+                    hover:bg-red-700 active:scale-95
+                  "
+                >
+                  <Square className="h-4 w-4 fill-white" />
+                  Stop &amp; Analyze
+                </button>
+
+                <button
+                  onClick={cancelRecording}
+                  className="
+                    inline-flex items-center gap-2 rounded-xl border border-gray-200
+                    bg-white px-6 py-3 text-sm font-semibold text-gray-700
+                    shadow-sm transition-all duration-200
+                    hover:border-gray-300 hover:bg-gray-50 active:scale-95
+                  "
+                >
+                  <XCircle className="h-4 w-4" />
+                  Cancel
+                </button>
+              </div>
             </>
           )}
 
