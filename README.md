@@ -94,3 +94,35 @@ The core of NeuroClear's clinical rigor is the **Intersection of Evidence** prin
 4.  **Tremor:** 6 peaks detected on "WELL" (shaking). *Domain Flagged.*
 5.  **Result:** **All three domains** are abnormal. The system confirms: *"Dysarthria detected"* and generates a full clinical report.
 
+---
+
+## 🏗️ System Architecture
+
+
+```mermaid
+flowchart LR
+    U["🌐 User<br/>Browser"] --> FE["🖥️ Next.js 16<br/>React 19"]
+
+    FE -->|multipart/form-data| API["⚡ FastAPI<br/>Backend"]
+
+    API --> P["🔬 Analysis Pipeline"]
+
+    subgraph PIPE["Audio Analysis"]
+        P --> ASR["🎙️ Whisper<br/>ASR"]
+        ASR --> ALIGN["🔗 Wav2Vec2<br/>Alignment"]
+        ALIGN --> SLICE["✂️ Audio<br/>Slicing"]
+        SLICE --> DSP["📊 DSP +<br/>Clinical Scoring"]
+        DSP --> GEM["🤖 Gemini<br/>Clinical Report"]
+    end
+
+    GEM --> REPORT["📋 ClinicalReport"]
+
+    subgraph OUTPUT["Clinical Output"]
+        REPORT --> ART["Articulation"]
+        REPORT --> PROS["Prosody"]
+        REPORT --> TREM["Tremor / Events"]
+        REPORT --> SEV["Severity"]
+        REPORT --> EX["Exercises"]
+    end
+
+    REPORT --> UI["💾 localStorage<br/>+ UI"]
