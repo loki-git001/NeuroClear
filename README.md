@@ -35,7 +35,7 @@ npm run dev
 ```
 
 ## 🧪 The Pipeline Workflow
-The frontend initiates a WebSocket connection to the backend. The backend processes audio in a strict 5-stage pipeline, ensuring deterministic and objective analysis:
+The frontend initiates a HTTP multipart upload connection to the backend. The backend processes audio in a strict 5-stage pipeline, ensuring deterministic and objective analysis:
 
 1. **Transcription:** Whisper ASR converts audio to text.
 2. **Alignment:** Wav2Vec2 generates CTC log-probabilities per phoneme.
