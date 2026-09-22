@@ -1,7 +1,7 @@
 # 🧠 NeuroClear
 **Automated Dysarthria Screening & Speech Analysis Pipeline**
 
-NeuroClear is a full-stack, AI-powered clinical tool designed to detect, assess, and rehabilitate motor speech disorders using objective acoustic metrics.
+NeuroClear is a AI-powered clinical tool designed to detect, assess, and rehabilitate motor speech disorders using objective acoustic metrics.
 
 ## 🚀 The Architecture
 This application completely decouples language models from acoustic signal processing to provide deterministic, clinical-grade accuracy.
