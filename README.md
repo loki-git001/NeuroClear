@@ -87,7 +87,7 @@ The core of NeuroClear's clinical rigor is the **Intersection of Evidence** prin
 4.  **Tremor:** 1 peak detected (normal). *Domain OK.*
 5.  **Result:** Since **Prosody** is the ONLY flagged domain, the system concludes: *"No dysarthria detected."* The UI shows the "Slow Speaking" note but confirms "No motor speech disorder detected."
 
-### Scenario B: True Positive (Patient with Parkinsonism)
+### Scenario B: True Positive (Patient with Dysarthria)
 1.  **User:** Reads "The weather is nice." Slowly and Shaky.
 2.  **Articulation:** CTC scores are poor on several words. *Domain Flagged.*
 3.  **Prosody:** Rate is very slow (45 WPM). *Domain Flagged.*
